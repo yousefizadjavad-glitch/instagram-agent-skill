@@ -202,7 +202,13 @@ def main():
     ap.add_argument("--lexicon", default=None, help="language-specific JSON lexicon")
     ap.add_argument("--lang", choices=("en", "fa"), default="en",
                     help="explicit language; default en preserves legacy scoring")
+    ap.add_argument("--tone-check", action="store_true", help="Persian tone consistency review")
+    ap.add_argument("--target-tone", choices=("formal", "semi-formal", "colloquial"))
+    ap.add_argument("--target-address", choices=("shoma", "to", "unspecified"), default=None)
     args = ap.parse_args()
+    tone_enabled = args.tone_check or args.target_tone is not None or args.target_address is not None
+    if tone_enabled and args.lang != "fa":
+        ap.error("tone options require --lang fa")
 
     read = lambda p: sys.stdin.read() if p == "-" else open(p, encoding="utf-8").read()
 
@@ -214,12 +220,19 @@ def main():
         from persian_review import load_rules, review, render as render_persian
         rules = load_rules(args.lexicon) if args.lexicon else load_rules()
         payload = [dict(source=name, **review(text, rules)) for name, text in targets]
+        if tone_enabled:
+            from persian_tone import review_tone, render_tone
+            for report, (_, text) in zip(payload, targets):
+                report["tone_review"] = review_tone(text, args.target_tone,
+                                                    args.target_address or "unspecified")
         if args.json:
             print(json.dumps(payload if args.compare else payload[0], ensure_ascii=False, indent=2))
         else:
             for report in payload:
                 render_persian(report, sys.stdout,
                                os.path.basename(report["source"]) if args.compare else None)
+                if tone_enabled:
+                    render_tone(report["tone_review"], sys.stdout)
         return
 
     with open(args.lexicon or LEX, encoding="utf-8") as stream:
