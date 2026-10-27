@@ -54,3 +54,34 @@ writes, provide the voice in chat and send text through stdin; set
 None of these skills publishes posts or sends messages. The user handles
 publication. Keep the Codex copies in sync deliberately when upstream skills
 change; they are independent copies, not generated on startup.
+
+## Unicode text core (Codex only)
+
+`text_core.py` supplies shared Unicode tokenization, numeric normalization and
+sentence boundaries to the humanizer, detector and Reel tools. Keep this file
+with the skill pack; scripts resolve it relative to their own location.
+
+- Context-valid U+200C between Arabic-script letters (including intervening
+  combining marks) is preserved and is not a fingerprint penalty. Leading,
+  trailing, repeated, Latin-adjacent or digit-adjacent ZWNJ is not exempt.
+  This is a script-context check, not Persian language or spelling detection.
+  Other format controls retain the existing cleanup and penalty policy.
+- Persian, Arabic-Indic and ASCII decimal digits are normalized for analysis;
+  Arabic thousands/decimal separators and percent signs have ASCII equivalents.
+  Displayed source text is preserved. A ZWNJ compound counts as one word.
+- To preserve English scoring, the detector still counts letter words and
+  excludes numeric-only tokens; Reel tools count numbers and currency tokens.
+  Existing ASCII decimal-token behavior is retained rather than redefining it.
+- Persian `؟` is a sentence boundary. Newlines remain boundaries for the
+  humanizer and detector; Reel timing keeps one input line per edit beat.
+- English scoring vocabularies, thresholds and the default 165 wpm are unchanged.
+  Persian/mixed-language scores are **not validated naturalness or hook-quality
+  measurements**. Timing is a word-count estimate, not a calibrated Persian
+  speech rate; use an actual reading and `--wpm` to plan a recording.
+
+Run the standard-library tests, including English regression checks against the
+unchanged original scripts, without dependencies:
+
+```bash
+python3 -B -m unittest discover -s .agents/skills/tests -v
+```

@@ -31,13 +31,15 @@ import json
 import os
 import re
 import sys
-import unicodedata
+
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from text_core import SENT_RE, valid_zwnj, suspicious_format
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LEX = os.path.join(HERE, "slop.json")
 
 URL_RE = re.compile(r"https?://\S+|www\.\S+|\S+@\S+\.\S+")
-SENT_RE = re.compile(r"[^.!?\n]+[.!?]*")
 
 
 def load_lexicon(path=LEX):
@@ -73,7 +75,16 @@ def restore_urls(text, found):
 def pass_invisible(text, lex):
     """Delete or space-normalise invisible characters. Returns (text, hits)."""
     hits = []
+    # Validate before removing other controls, so cleanup cannot manufacture
+    # an apparently valid joiner from an originally suspicious sequence.
+    invalid = {i for i, c in enumerate(text) if c == "\u200c" and not valid_zwnj(text, i)}
+    if invalid:
+        hits.append({"name": "U+200C ZERO WIDTH NON-JOINER",
+                     "count": len(invalid), "action": "delete"})
+        text = "".join(c for i, c in enumerate(text) if i not in invalid)
     for entry in lex["invisible"]:
+        if entry["cp"] == "U+200C":
+            continue
         cp = _cp(entry["cp"])
         if isinstance(cp, tuple):
             pattern = "[" + re.escape(chr(cp[0])) + "-" + re.escape(chr(cp[1])) + "]"
@@ -84,12 +95,12 @@ def pass_invisible(text, lex):
             hits.append({"name": entry["cp"] + " " + entry["name"], "count": n,
                          "action": entry["action"]})
             text = re.sub(pattern, "" if entry["action"] == "delete" else " ", text)
-    # Any remaining Cf (format) character is invisible by definition.
-    stray = [c for c in text if unicodedata.category(c) == "Cf"]
+    # Preserve context-valid ZWNJ; all other remaining Cf stay suspicious.
+    stray = [c for i, c in enumerate(text) if suspicious_format(text, i)]
     if stray:
         hits.append({"name": "other invisible format chars", "count": len(stray),
                      "action": "delete"})
-        text = "".join(c for c in text if unicodedata.category(c) != "Cf")
+        text = "".join(c for i, c in enumerate(text) if not suspicious_format(text, i))
     return text, hits
 
 
