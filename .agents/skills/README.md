@@ -25,8 +25,8 @@ The standard-library tools also accept stdin (`-`) and `--json`. The caption
 linter returns exit 1 for REVIEW/FAIL. The detector's text mode returns exit 1
 for non-PASS; JSON mode returns 0, so inspect its `verdict`. A low score is not
 necessarily an execution error. These are English-oriented heuristics, not
-proof of human authorship or a prediction of viral performance. The humanizer
-removes U+200C, so do not use it on Persian without adapting the rules.
+proof of human authorship or a prediction of viral performance. The humanizer preserves context-valid Persian U+200C but has no Persian
+rewriting policy; do not use it for automatic Persian rewriting.
 
 ## Personal context and outputs
 
@@ -85,3 +85,55 @@ unchanged original scripts, without dependencies:
 ```bash
 python3 -B -m unittest discover -s .agents/skills/tests -v
 ```
+
+## Persian style review (phase two, part one)
+
+The Codex detector has an explicit `--lang fa` path, independent of English
+scoring. Omitted `--lang` and `--lang en` keep the existing English CLI, JSON
+schema, scoring and exit-code behavior. No language auto-detection is used.
+
+```bash
+python3 -B .agents/skills/ig-human/detect.py draft.txt --lang fa
+python3 -B .agents/skills/ig-human/detect.py draft.txt --lang fa --json
+python3 -B .agents/skills/ig-human/detect.py before.txt after.txt --lang fa --json
+```
+
+Persian mode returns an editorial review, never a naturalness score, authorship
+verdict or numerical comparison. Both text and JSON modes exit 0 for a completed
+review, including when findings exist. Invalid CLI options retain argparse exit
+2; file/JSON failures remain execution errors. Two files produce separate reviews
+(a JSON array), with no quality delta. Stdin `-` and execution outside the checkout
+are supported.
+
+`persian_review.py` uses the existing `text_core.words` for counts. It retains the
+exact source in `text`; each finding includes `evidence`, `start`, `end`, `reason`,
+`suggestion`, exceptions, relevant tones and contextual attribution status.
+Offsets are zero-based Python Unicode code-point indexes, end exclusive, into
+the original text (not UTF-8 bytes or UTF-16 units). The analysis-only mapping of
+Arabic yeh/kaf to Persian variants keeps character positions intact. ZWNJ,
+combining marks, punctuation, digits and mixed English content remain unchanged.
+
+`fa_style_rules.json` is a small manually authored editorial lexicon, not a
+validated corpus. Each rule has a stable ID, regex pattern, warning type, reason,
+exceptions, relevant tones and suggestion. The six categories are cliché
+introductions, vague promotion, absolute promises, generic engagement requests,
+heavy administrative phrasing and obvious consecutive word repetition. English
+stock vocabulary is not evaluated in Persian mode. `--lexicon` may select a
+custom language-specific JSON file: Persian requires a `rules` array with the
+same fields; English retains the existing `slop.json` schema.
+
+Quoted findings are retained for review and marked `quoted: true` and
+`attribution: requires_quote_review`; they are not attributed to the author.
+Guillemets, curly and ASCII quotes, nested and unclosed spans are handled
+conservatively. Apostrophes inside words are not treated as quote delimiters.
+Unquoted findings use `requires_context_review`, not a confirmed defect.
+Negation, legal guarantees, deliberate emphasis, formal correspondence and
+preceding specific questions require human review; exceptions are explanatory,
+not an automatic semantic filter.
+
+Coverage is intentionally limited: no broad paraphrase detection, semantic
+repetition, full morphology/diacritic normalization, dialect coverage or reliable
+reported-speech attribution. Markdown/code quotation conventions and malformed
+quote punctuation are not fully parsed. An empty review only means no initial
+rule matched. No Persian auto-rewriting was added to `humanize.py` and no
+calibration data or numerical Persian quality model is claimed.

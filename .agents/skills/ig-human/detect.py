@@ -12,13 +12,16 @@ It does not call their APIs and it cannot promise their verdict. It catches
 the things they all key on, which is why fixing them tends to move their
 numbers too - but the only honest claim is the one on this line.
 
-Each check returns a HUMAN score from 0 to 100. Higher is better.
+The default English path returns HUMAN scores from 0 to 100. Higher is better.
+Explicit --lang fa uses a separate descriptive editorial review, with no score
+or authorship verdict. It never rewrites the source.
 
 Usage
   python3 detect.py draft.txt
   pbpaste | python3 detect.py -
   python3 detect.py draft.txt --json
-  python3 detect.py before.txt after.txt      # compare two drafts
+  python3 detect.py before.txt after.txt      # compare two English drafts
+  python3 detect.py draft.txt --lang fa --json # descriptive Persian review
 """
 
 import argparse
@@ -196,16 +199,31 @@ def main():
     ap.add_argument("input", nargs="?", default="-", help="file, or - for stdin")
     ap.add_argument("compare", nargs="?", help="second file, to show before/after")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--lexicon", default=LEX)
+    ap.add_argument("--lexicon", default=None, help="language-specific JSON lexicon")
+    ap.add_argument("--lang", choices=("en", "fa"), default="en",
+                    help="explicit language; default en preserves legacy scoring")
     args = ap.parse_args()
 
-    lex = json.load(open(args.lexicon, encoding="utf-8"))
     read = lambda p: sys.stdin.read() if p == "-" else open(p, encoding="utf-8").read()
 
     targets = [(args.input, read(args.input))]
     if args.compare:
         targets.append((args.compare, read(args.compare)))
 
+    if args.lang == "fa":
+        from persian_review import load_rules, review, render as render_persian
+        rules = load_rules(args.lexicon) if args.lexicon else load_rules()
+        payload = [dict(source=name, **review(text, rules)) for name, text in targets]
+        if args.json:
+            print(json.dumps(payload if args.compare else payload[0], ensure_ascii=False, indent=2))
+        else:
+            for report in payload:
+                render_persian(report, sys.stdout,
+                               os.path.basename(report["source"]) if args.compare else None)
+        return
+
+    with open(args.lexicon or LEX, encoding="utf-8") as stream:
+        lex = json.load(stream)
     payload = []
     for name, text in targets:
         results, overall, verdict = run(text, lex)
