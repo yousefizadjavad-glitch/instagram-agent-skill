@@ -2,6 +2,7 @@
 import re
 
 from persian_review import BOUNDARY, quote_spans
+from persian_dialogue import labelled_dialogue_spans
 
 LIMITATIONS = [
     'قواعد محدودند؛ نبود یافته تأیید یکدستی لحن نیست.',
@@ -17,7 +18,7 @@ def bounded(pattern):
 ADMIN = bounded(r'مقتضی است|(?:بدین[‌ ]وسیله )?به (?:اطلاع|استحضار) می[‌ ]رساند|(?:اقدامات لازم را )?مبذول فرمایید')
 COLLOQUIAL = bounded(r'می[‌ ]تونی(?:ن)?|می[‌ ]تونین|بزن بریم|یادت نره|(?:فرم|سفارش|رنگ|اندازه|شماره) رو')
 # A small explicit grammar: prepositional "تو خونه/این ویدئو" never matches.
-ADDRESS = bounded(r'(?P<pronoun>شما|تو)\s+(?:می[‌ ]توانید|می[‌ ]تونی(?:ن)?|می[‌ ]تونین|(?:رنگ را |اندازه را )?انتخاب کنید|بخوانید|پاسخ بده|فرم را تکمیل کنید|شمارهٔ سفارش را بفرستید|سفارش را ثبت کنید|هزینه را پرداخت کن|فرم را بخوانید)')
+ADDRESS = bounded(r'(?P<pronoun>شما|تو)\s+(?:می[‌ ]توانید|می[‌ ]تونی(?:ن)?|می[‌ ]تونین|(?:رنگ را |اندازه را )?انتخاب کنید|بخوانید|پاسخ بده|فرم را تکمیل کنید|شمارهٔ سفارش را بفرستید|سفارش را ثبت کنید|هزینه را پرداخت کن|فرم را بخوانید|(?:فایل صوتی|پادکست|پیام صوتی) را (?:تا آخر )?گوش دهید|(?:شمارهٔ پرونده|شمارهٔ سفارش|نشانی) را یادداشت کنید|(?:برداشتت|نظرت|پاسخت) را (?:زیر پست|در بخش نظرات) بنویس|(?:رسیدت|کارتت|برگه‌ات) را نگه دار)')
 DIALOGUE = re.compile(r'(?m)^\s*(?:مشتری|پشتیبان|گوینده(?:ٔ? [۱۲12])?|کاربر|فروشنده)\s*[:：][^\n]*')
 REPORTED = bounded(r'(?:گفت|نوشت|پرسید|گفتند)\s*[:：]?')
 AUDIENCE = bounded(r'(?:والدین|دانش[‌ ]آموز|مشتری|همکار|دوست|دوستان|مخاطب|مخاطبان) عزیز')
@@ -40,6 +41,8 @@ def review_tone(text, target_tone=None, target_address='unspecified'):
         exclude(start, end, 'quotation')
     for match in DIALOGUE.finditer(analysis):
         exclude(*match.span(), 'explicit_dialogue')
+    for start, end in labelled_dialogue_spans(analysis):
+        exclude(start, end, 'explicit_dialogue')
     # Without a semantic parser, abstain on the rest of a reported-speech sentence.
     for match in REPORTED.finditer(analysis):
         tail = re.search(r'[.!؟?\n]', analysis[match.end():])
@@ -94,7 +97,7 @@ def review_tone(text, target_tone=None, target_address='unspecified'):
                   and not re.search(r'\n[ \t]*\n[ \t]*\n|(?m:^[ \t]*(?:---+|===+)[ \t]*$)', gap))
         if nearby and previous['scope'] == current['scope'] and previous['value'] != current['value']:
             add('fa-address-shift', [previous, current],
-                'در یک محدودهٔ روایت دو صورت متفاوت خطاب دیده شد؛ عمدی‌بودن تغییر را بررسی کنید.',
+                'تغییر احتمالی خطاب: در یک محدودهٔ روایت دو صورت متفاوت دیده شد؛ عمدی‌بودن تغییر را بررسی کنید.',
                 'اگر مخاطب یکسان است، خطاب را یکدست کنید.')
     for item in addresses:
         if target_address != 'unspecified' and item['value'] != target_address:
