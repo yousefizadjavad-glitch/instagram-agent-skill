@@ -46,10 +46,13 @@ def suggest(text, protect=()):
             candidate['checks'] = {'protected_spans': 'passed', 'semantic_review': 'required'}
             suggestions.append(candidate)
     mark_conflicts(suggestions)
+    limitations = list(LIMITATIONS)
+    if any(s['reason'] == 'suspected_name_context' for s in spans):
+        limitations.append('پس از نشانگر صریح نام، محدوده مبهم محافظت شد؛ نام برند تشخیص داده نشده است. نام دقیق را با --protect مشخص کنید.')
     return dict(schema_version=1, language='fa', mode='rewrite_suggestions', engine='offline_rules',
         source_text=text, source_sha256=hashlib.sha256(text.encode('utf-8')).hexdigest(),
         options={'protect': protect}, suggestions=suggestions, protected_spans=spans,
-        abstentions=abstentions, limitations=list(LIMITATIONS),
+        abstentions=abstentions, limitations=limitations,
         status='suggestions_available' if suggestions else 'insufficient_context' if abstentions else 'no_suggestions')
 
 

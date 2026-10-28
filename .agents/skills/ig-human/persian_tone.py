@@ -17,10 +17,12 @@ def bounded(pattern):
 ADMIN = bounded(r'مقتضی است|(?:بدین[‌ ]وسیله )?به (?:اطلاع|استحضار) می[‌ ]رساند|(?:اقدامات لازم را )?مبذول فرمایید')
 COLLOQUIAL = bounded(r'می[‌ ]تونی(?:ن)?|می[‌ ]تونین|بزن بریم|یادت نره|(?:فرم|سفارش|رنگ|اندازه|شماره) رو')
 # A small explicit grammar: prepositional "تو خونه/این ویدئو" never matches.
-ADDRESS = bounded(r'(?P<pronoun>شما|تو)\s+(?:می[‌ ]توانید|می[‌ ]تونی(?:ن)?|می[‌ ]تونین|(?:رنگ را |اندازه را )?انتخاب کنید|بخوانید|پاسخ بده|فرم را تکمیل کنید|شمارهٔ سفارش را بفرستید)')
+ADDRESS = bounded(r'(?P<pronoun>شما|تو)\s+(?:می[‌ ]توانید|می[‌ ]تونی(?:ن)?|می[‌ ]تونین|(?:رنگ را |اندازه را )?انتخاب کنید|بخوانید|پاسخ بده|فرم را تکمیل کنید|شمارهٔ سفارش را بفرستید|سفارش را ثبت کنید|هزینه را پرداخت کن|فرم را بخوانید)')
 DIALOGUE = re.compile(r'(?m)^\s*(?:مشتری|پشتیبان|گوینده(?:ٔ? [۱۲12])?|کاربر|فروشنده)\s*[:：][^\n]*')
 REPORTED = bounded(r'(?:گفت|نوشت|پرسید|گفتند)\s*[:：]?')
 AUDIENCE = bounded(r'(?:والدین|دانش[‌ ]آموز|مشتری|همکار|دوست|دوستان|مخاطب|مخاطبان) عزیز')
+
+AUDIENCE_SWITCH = bounded(r'خطاب به|مخاطب بعدی|تغییر مخاطب')
 
 
 def review_tone(text, target_tone=None, target_address='unspecified'):
@@ -48,13 +50,15 @@ def review_tone(text, target_tone=None, target_address='unspecified'):
     def blocked(start, end):
         return any(start < s['end'] and end > s['start'] for s in excluded)
 
-    # Paragraphs and explicit audience switches end the address comparison scope.
+    # Explicit audience switches/exclusions break scope. Blank lines alone do not
+    # prove a new audience; compare only nearby consecutive address evidence.
     cuts = {0, len(text)}
-    cuts.update(m.end() for m in re.finditer(r'\n\s*\n', analysis))
     cuts.update(m.start() for m in AUDIENCE.finditer(analysis) if not blocked(*m.span()))
+    cuts.update(m.start() for m in AUDIENCE_SWITCH.finditer(analysis) if not blocked(*m.span()))
     for span in excluded:
         cuts.update((span['start'], span['end']))
     cuts = sorted(cuts)
+    register_cuts = sorted(set(cuts) | {m.end() for m in re.finditer(r'\n\s*\n', analysis)})
 
     def scope(position):
         return sum(c <= position for c in cuts) - 1
@@ -66,7 +70,8 @@ def review_tone(text, target_tone=None, target_address='unspecified'):
                 continue
             start, end = match.span()
             item = {'kind': kind, 'evidence': text[start:end], 'start': start,
-                    'end': end, 'scope': scope(start)}
+                    'end': end, 'scope': scope(start) if kind == 'address'
+                    else sum(c <= start for c in register_cuts) - 1}
             if kind == 'address':
                 item['value'] = 'shoma' if match.group('pronoun') == 'شما' else 'to'
             found.append(item)
@@ -83,7 +88,11 @@ def review_tone(text, target_tone=None, target_address='unspecified'):
                          'evidence': [{k: v for k, v in e.items() if k != 'scope'} for e in evidence]})
 
     for previous, current in zip(addresses, addresses[1:]):
-        if previous['scope'] == current['scope'] and previous['value'] != current['value']:
+        gap = analysis[previous['end']:current['start']]
+        # Abstain across distant narration, section separators, or multiple sentences.
+        nearby = (len(gap) <= 200 and len(re.findall(r'[.!؟?]+', gap)) <= 1
+                  and not re.search(r'\n[ \t]*\n[ \t]*\n|(?m:^[ \t]*(?:---+|===+)[ \t]*$)', gap))
+        if nearby and previous['scope'] == current['scope'] and previous['value'] != current['value']:
             add('fa-address-shift', [previous, current],
                 'در یک محدودهٔ روایت دو صورت متفاوت خطاب دیده شد؛ عمدی‌بودن تغییر را بررسی کنید.',
                 'اگر مخاطب یکسان است، خطاب را یکدست کنید.')

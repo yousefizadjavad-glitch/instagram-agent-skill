@@ -86,7 +86,8 @@ class ToneContracts(unittest.TestCase):
             self.assertFalse(result['findings'])
             self.assertTrue(result['excluded_spans'])
         self.assertFalse(review_tone('شما بخوانید. «تو می‌تونی')['findings'])
-        self.assertFalse(review_tone('شما بخوانید.\n\nتو می‌تونی')['findings'])
+        # Adjacent paragraphs may continue the same audience (S3 regression).
+        self.assertEqual(review_tone('شما بخوانید.\n\nتو می‌تونی')['findings'][0]['rule_id'], 'fa-address-shift')
 
     def test_offsets_unicode_and_normalized_matching(self):
         text = '😀 مُحتوا\nشما مي‌توانيد بخوانید؛ تو مي‌توني ادامه بدی.'
