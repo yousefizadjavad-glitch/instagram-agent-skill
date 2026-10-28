@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from persian_review import quote_spans, BOUNDARY
+from persian_dialogue import labelled_dialogue_spans
 
 
 def protected_spans(text, protect=()):
@@ -27,6 +28,8 @@ def protected_spans(text, protect=()):
     for reason, pattern in patterns.items():
         for match in re.finditer(pattern, text):
             add(*match.span(), reason)
+    for start, end in labelled_dialogue_spans(text):
+        add(start, end, 'dialogue')
     for start, end in quote_spans(text):
         add(start, end, 'quotation')
     for literal in protect:
@@ -37,11 +40,28 @@ def protected_spans(text, protect=()):
     # Explicit naming cues only: this is not general brand/name recognition.
     # Unknown names still require --protect. Stop at a clause delimiter; deliberately
     # overprotect surrounding words rather than guess where the name ends.
-    naming = re.compile(r'(?<!' + BOUNDARY + r')(?P<cue>برند|نام تجاری|نام محصول)[ \t]+[^.!؟?؛\n]+')
+    naming = re.compile(r'(?<!' + BOUNDARY + r')(?P<cue>برند|نام تجاری|نام محصول|نام مجموعه|عنوان(?: (?:کتاب|اثر|فیلم|نمایشگاه))?)(?P<separator>[ \t]*[:：][ \t]*|[ \t]+)(?P<content>[^.!؟?؛\r\n]+)')
     for match in naming.finditer(text):
+        cue = match.group('cue')
+        if cue.startswith('عنوان'):
+            # "به عنوان نمونه" is not a title introduction. Bare "عنوان" needs
+            # a colon or a quoted title; no generic title/name inference.
+            if re.search(r'(?<!' + BOUNDARY + r')(?:به|تحت)[ \t]+\Z', text[:match.start()]):
+                continue
+            if cue == 'عنوان' and not (':' in match.group('separator') or '：' in match.group('separator')
+                                       or match.group('content').lstrip().startswith(('«', '“', '"'))):
+                continue
         if not any(s['reason'] == 'user_protected' and s['start'] <= match.start()
                    and s['end'] > match.end('cue') + 1 for s in spans):
             add(*match.span(), 'suspected_name_context')
+    # An explicit statement about a name's orthography is a safety cue, not NER.
+    # Guard the whole sentence rather than guess the exact name boundaries.
+    for sentence in re.finditer(r'[^.!؟?\r\n]+', text):
+        part = sentence.group()
+        if (re.search(r'(?<!' + BOUNDARY + r')(?:فاصله(?:ٔ|‌ی|ی)?|نگارش|املای)(?!' + BOUNDARY + r')', part)
+                and re.search(r'(?<!' + BOUNDARY + r')(?:این نام|این عنوان|نام محصول|نام مجموعه)(?!' + BOUNDARY + r')', part)
+                and re.search(r'عمدی است|هویت بصری|عیناً|حفظ', part)):
+            add(*sentence.span(), 'suspected_name_context')
     # Lock sensitive clauses, rather than assuming unchanged keywords preserve meaning.
     sensitive = re.compile(r'(?<!' + BOUNDARY + r')(?:نیست|نیستند|نه|بدون|اگر|مگر|فقط|حداقل|حداکثر|شاید|احتمالاً|حتماً|تضمینی|قطعی|باید|شما|تو|ممکن است|به شرط|برخی|همه|تا|نمی[\w\u200c]*|نکن[\w\u200c]*)(?!' + BOUNDARY + r')')
     for clause in re.finditer(r'[^.!؟?\n]+', text):

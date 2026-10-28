@@ -18,6 +18,10 @@ NEGATION = re.compile(r'(?<!' + BOUNDARY + r')(?:'
     r'هرگز|هیچ)(?!' + BOUNDARY + r')')
 
 
+# A separate language-only guard: do not expand mechanical version-one policy.
+PROHIBITION = re.compile(r'(?<!' + BOUNDARY + r')(?:نباید|نکنید|ممنوع[ \t]+است|مجاز[ \t]+نیست)(?!' + BOUNDARY + r')')
+
+
 def sentence_spans(text):
     # Ignore periods within URLs, decimals and Latin identifiers.
     protected = []
@@ -41,6 +45,8 @@ def validate(text, candidate, spans, rule):
     if overlaps(a, b, spans):
         return 'protected_span'
     sentence = next((text[s:e] for s, e in sentence_spans(text) if s <= a and b <= e), None)
+    if sentence is not None and PROHIBITION.search(sentence):
+        return 'prohibition_requires_review'
     if sentence is not None and NEGATION.search(sentence):
         return 'negation_requires_review'
     if sentence is None or BARRIER.search(sentence):
