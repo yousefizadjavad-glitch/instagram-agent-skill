@@ -34,6 +34,14 @@ def protected_spans(text, protect=()):
             raise ValueError('protected phrase must not be empty')
         for match in re.finditer(re.escape(literal), text):
             add(*match.span(), 'user_protected')
+    # Explicit naming cues only: this is not general brand/name recognition.
+    # Unknown names still require --protect. Stop at a clause delimiter; deliberately
+    # overprotect surrounding words rather than guess where the name ends.
+    naming = re.compile(r'(?<!' + BOUNDARY + r')(?P<cue>برند|نام تجاری|نام محصول)[ \t]+[^.!؟?؛\n]+')
+    for match in naming.finditer(text):
+        if not any(s['reason'] == 'user_protected' and s['start'] <= match.start()
+                   and s['end'] > match.end('cue') + 1 for s in spans):
+            add(*match.span(), 'suspected_name_context')
     # Lock sensitive clauses, rather than assuming unchanged keywords preserve meaning.
     sensitive = re.compile(r'(?<!' + BOUNDARY + r')(?:نیست|نیستند|نه|بدون|اگر|مگر|فقط|حداقل|حداکثر|شاید|احتمالاً|حتماً|تضمینی|قطعی|باید|شما|تو|ممکن است|به شرط|برخی|همه|تا|نمی[\w\u200c]*|نکن[\w\u200c]*)(?!' + BOUNDARY + r')')
     for clause in re.finditer(r'[^.!؟?\n]+', text):
