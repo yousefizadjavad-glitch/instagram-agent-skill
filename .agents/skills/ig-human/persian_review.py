@@ -9,6 +9,7 @@ import re
 import unicodedata
 
 from text_core import words
+from persian_review_context import clear_exception
 
 RULES = Path(__file__).with_name('fa_style_rules.json')
 NOTICE = 'این بازبینی پیشنهاد ویرایشی است؛ دربارهٔ طبیعی‌بودن متن یا هویت نویسنده داوری نمی‌کند. نبود یافته نیز تأیید کیفیت متن نیست.'
@@ -52,6 +53,8 @@ def review(text, rules=None):
             if rule['warning_type'] == 'obvious_repetition':
                 if not any('ARABIC' in unicodedata.name(c, '') for c in match.group('word')):
                     continue
+            if clear_exception(rule['id'], analysis, match, quotes):
+                continue
             quoted = any(start < b and end > a for a, b in quotes)
             findings.append({
                 'rule_id': rule['id'], 'warning_type': rule['warning_type'],

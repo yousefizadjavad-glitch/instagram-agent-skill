@@ -81,7 +81,9 @@ class PersianReviewTests(unittest.TestCase):
         self.assertFalse({'human_score', 'verdict', 'score', 'author'} & set(report['findings'][0]))
 
     def test_context_exceptions_are_visible(self):
-        for text in ['این موفقیت تضمینی نیست.', 'آیا لایک کنید و به اشتراک بگذارید درخواست خوبی است؟', 'در نامهٔ اداری نوشت: مقتضی است']:
+        # Clear local negation is now exempt; ambiguous cases retain context review.
+        self.assertEqual(review('این موفقیت تضمینی نیست.')['findings'], [])
+        for text in ['شاید این موفقیت تضمینی نیست.', 'آیا لایک کنید و به اشتراک بگذارید درخواست خوبی است؟', 'در نامهٔ اداری نوشت: مقتضی است']:
             finding = review(text)['findings'][0]
             self.assertTrue(finding['exceptions'])
             self.assertEqual(finding['attribution'], 'requires_context_review')
