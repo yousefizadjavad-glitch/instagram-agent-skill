@@ -58,13 +58,22 @@ def main():
     parser.add_argument('input', nargs='?', default='-')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--protect', action='append', default=[])
+    parser.add_argument('--simplify', action='store_true')
+    parser.add_argument('--target-tone', choices=('formal', 'semi-formal', 'colloquial'))
     args = parser.parse_args()
+    if args.target_tone and not args.simplify:
+        parser.error('--target-tone requires --simplify')
     if any(not value for value in args.protect):
         parser.error('--protect must not be empty')
     try:
         # Preserve CRLF: offsets and hash always refer to exactly decoded UTF-8 bytes.
         raw = sys.stdin.buffer.read() if args.input == '-' else Path(args.input).read_bytes()
         report = suggest(raw.decode('utf-8'), args.protect)
+        if args.simplify:
+            from persian_simplify import simplify
+            report['schema_version'] = 2
+            report['simplification'] = simplify(report['source_text'], args.protect, args.target_tone)
+            mark_conflicts(report['suggestions'] + report['simplification']['suggestions'])
     except (OSError, UnicodeError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -77,6 +86,12 @@ def main():
             print(s['reason'])
         if not report['suggestions']:
             print('در محدودهٔ قواعد، پیشنهادی ارائه نشد.')
+        if args.simplify:
+            for item in report['simplification']['suggestions'] + report['simplification']['guidance']:
+                print(f"[{item['start']}:{item['end']}] {item['before']!r} → {item['replacement']!r}")
+                print(item['reason'])
+            for limitation in report['simplification']['limitations']:
+                print(limitation)
         for limitation in report['limitations']:
             print(limitation)
     return 0
