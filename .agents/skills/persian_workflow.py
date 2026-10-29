@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'ig-human'))
+from persian_fact_checks import check_facts
 from persian_review import review
 from persian_tone import review_tone
 from persian_rewrite import suggest
@@ -149,6 +150,9 @@ def decisions_for(report, decisions):
     for decision in decisions:
         keys = {'section_id', 'suggestion_id', 'source_hash', 'request_hash', 'start', 'end', 'before', 'action'}
         exact_keys(decision, keys, keys)
+        for key in ('section_id', 'suggestion_id', 'source_hash', 'request_hash', 'before', 'action'):
+            if not isinstance(decision[key], str):
+                raise ValueError(f'decision.{key} must be a string')
         if decision['action'] not in ('accept', 'reject'):
             raise ValueError('explicit accept/reject required')
         section = sections_by_id.get(decision['section_id'])
@@ -193,6 +197,8 @@ def coordinate(request, decisions=None):
         for section in report['sections'] + ([report['sequence_review']] if 'sequence_review' in report else []):
             for category in ('findings','suggestions','guidance','abstentions'):
                 report[category].extend(deepcopy(section[category]))
+    report['fact_checks'] = check_facts(request['verified_facts'], request['protected_terms'],
+                                      report['sections'], report['source_hash'])
     report['decisions'] = decisions_for(report, [] if decisions is None else decisions)
     report['applied'] = False
     return report
